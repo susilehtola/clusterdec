@@ -1,0 +1,356 @@
+/*
+ Written by Susi Lehtola, 2016
+ Copyright (c) 2016, Susi Lehtola
+
+ This program is free software; you can redistribute it and/or
+ modify it under the terms of the GNU General Public License
+ as published by the Free Software Foundation; either version 2
+ of the License, or (at your option) any later version.
+*/
+
+{
+  char *loc=getenv("CLUSTERDEC_DIR");
+
+#ifdef PRINTOUT
+  printf("T1\n");
+  T1.print();
+  printf("T2\n");
+  T2.print();
+  printf("T3\n");
+  T3.print();
+  printf("T4\n");
+  T4.print();
+#endif
+
+  // Sanity check
+  maxr=std::min(maxr,8);
+  for(int orank=2;orank<=maxr;orank++) {
+    size_t Ndet;
+    switch(orank) {
+    case(2):
+      Ndet=T2.size();
+      break;
+    case(3):
+      Ndet=T3.size();
+      break;
+    case(4):
+      Ndet=T4.size();
+      break;
+    case(5):
+      Ndet=T5.size();
+      break;
+    case(6):
+      Ndet=T6.size();
+      break;
+    case(7):
+      Ndet=T7.size();
+      break;
+    case(8):
+      Ndet=T8.size();
+      break;
+    default:
+      throw std::logic_error("Not implemented!\n");
+    }
+    // No dets!
+    if(Ndet==0)
+      continue;
+
+    std::vector<recipe_t> recipes;
+    {
+      printf("Reading in rank-%i recipes ... ",orank);
+      fflush(stdout);
+      auto tstart(std::chrono::system_clock::now());
+
+      std::ostringstream oss;
+      oss << "recipes_" << orank << ".dat";
+      std::string fname = oss.str();
+      if(loc!=NULL)
+	fname=std::string(loc)+"/"+fname;
+
+      FILE *in=fopen(fname.c_str(),"r");
+      if(!in)
+	throw std::runtime_error("Error opening recipe file " + fname + "!\n");
+
+      const int MAXBUF=4096;
+      char line[MAXBUF];
+      while(fgets(line,MAXBUF,in)!=NULL) {
+	// Read in integers on line
+	int number;
+	std::vector<orbind_t> input;
+
+	std::istringstream iss(line);
+	while (iss >> number)
+	  input.push_back(number);
+
+	recipe_t rec;
+
+	// Sign is
+	rec.sign=input[0];
+
+	// Number of tensors is
+	int nten(input[1]);
+
+	// List of tensors
+	rec.tensors.resize(nten);
+
+	// Index in input
+	size_t i0=2;
+	for(int iten=0;iten<nten;iten++) {
+	  // Tensor rank is
+	  int r(input[i0++]);
+	  // Indices are
+	  std::vector<orbind_t> idx(2*r);
+	  for(int i=0;i<2*r;i++)
+	    idx[i]=input[i+i0];
+
+	  // Increment i0
+	  i0+=2*r;
+
+	  // Add to list
+	  rec.tensors[iten]=idx;
+	}
+
+	// Add to buffer
+	recipes.push_back(rec);
+      }
+      fclose(in);
+
+      auto tstop(std::chrono::system_clock::now());
+      std::chrono::duration<double> elapsed = tstop-tstart;
+      printf("done (%9.3f s)\n",elapsed.count());
+      fflush(stdout);
+    }
+
+    // Delete any recipes which vanish by lack of configurations
+    {
+      std::vector<bool> Texist(9,false);
+      Texist[1]=T1.size();
+      Texist[2]=T2.size();
+      Texist[3]=T3.size();
+      Texist[4]=T4.size();
+      Texist[5]=T5.size();
+      Texist[6]=T6.size();
+      Texist[7]=T7.size();
+      Texist[8]=T8.size();
+
+      // Loop over recipes
+      size_t ndel=0;
+      for(size_t i=recipes.size()-1;i<recipes.size();i--) {
+	// Loop over tensors in recipe
+	for(size_t j=0;j<recipes[i].tensors.size();j++)
+	  if(!Texist[recipes[i].tensors[j].size()/2]) {
+	    recipes.erase(recipes.begin()+i);
+	    ndel++;
+	    break;
+	  }
+      }
+      if(ndel) {
+	printf("%i rank-%i terms do not contribute.\n",(int) ndel, (int) orank);
+	fflush(stdout);
+      }
+    }
+
+    printf("Evaluating %9i rank-%i terms on %7i dets ... ",(int) recipes.size(),(int) orank,(int) Ndet);
+    fflush(stdout);
+    auto tstart(std::chrono::system_clock::now());
+
+    for(size_t irec=0;irec<recipes.size();irec++) {
+      const std::vector< std::vector<orbind_t> > & tensors=recipes[irec].tensors;
+      int sign=recipes[irec].sign;
+
+      // Handle output
+      switch(orank) {
+      case(2):
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+	for(size_t idet=0;idet<Ndet;idet++) {
+	  Tensor2_entry_t etr(T2.get(idet));
+	  // Orbital indices
+	  std::vector<orbind_t> oidx(2*orank);
+	  double A;
+	  unroll_entry2(etr, oidx, A);
+
+#ifdef PRINTOUT
+	  printf("Processing determinant with indices (");
+	  for(int i=0;i<orank;i++)
+	    printf(" %i",oidx[i]);
+	  printf(") -> (");
+	  for(int i=orank;i<2*orank;i++)
+	    printf(" %i",oidx[i]);
+	  printf(")\n");
+#endif
+
+	  // Gather the tensor values
+	  double dA=gather(tensors,oidx,T1,T2,T3,T4,T5,T6,T7,T8);
+
+#ifdef PRINTOUT
+	  printf("2 idet = %6i A = %e dA = % e sign = %i\n",(int) idet,A,dA,sign);
+#endif
+
+	  // Do the calculation
+	  A += sign*dA;
+	  T2.set(idet,A);
+	}
+	break;
+
+      case(3):
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+	for(size_t idet=0;idet<Ndet;idet++) {
+	  Tensor3_entry_t etr(T3.get(idet));
+	  // Orbital indices
+	  std::vector<orbind_t> oidx(2*orank);
+	  double A;
+	  unroll_entry3(etr, oidx, A);
+
+#ifdef PRINTOUT
+	  printf("Processing determinant with indices (");
+	  for(int i=0;i<orank;i++)
+	    printf(" %i",oidx[i]);
+	  printf(") -> (");
+	  for(int i=orank;i<2*orank;i++)
+	    printf(" %i",oidx[i]);
+	  printf(")\n");
+#endif
+
+	  // Gather the tensor values
+	  double dA=gather(tensors,oidx,T1,T2,T3,T4,T5,T6,T7,T8);
+#ifdef PRINTOUT
+	  printf("3 idet = %6i A = %e dA = % e sign = %i\n",(int) idet,A,dA,sign);
+#endif
+
+	  // Do the calculation
+	  A += sign*dA;
+	  T3.set(idet,A);
+	}
+	break;
+
+      case(4):
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+	for(size_t idet=0;idet<Ndet;idet++) {
+	  Tensor4_entry_t etr(T4.get(idet));
+	  // Orbital indices
+	  std::vector<orbind_t> oidx(2*orank);
+	  double A;
+	  unroll_entry4(etr, oidx, A);
+
+#ifdef PRINTOUT
+	  printf("Processing determinant with indices (");
+	  for(int i=0;i<orank;i++)
+	    printf(" %i",oidx[i]);
+	  printf(") -> (");
+	  for(int i=orank;i<2*orank;i++)
+	    printf(" %i",oidx[i]);
+	  printf(")\n");
+#endif
+
+	  // Gather the tensor values
+	  double dA=gather(tensors,oidx,T1,T2,T3,T4,T5,T6,T7,T8);
+
+#ifdef PRINTOUT
+	  printf("4 idet = %6i A = %e dA = % e sign = %i\n",(int) idet,A,dA,sign);
+#endif
+
+	  // Do the calculation
+	  A += sign*dA;
+	  T4.set(idet,A);
+	}
+	break;
+
+      case(5):
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+	for(size_t idet=0;idet<Ndet;idet++) {
+	  Tensor5_entry_t etr(T5.get(idet));
+	  // Orbital indices
+	  std::vector<orbind_t> oidx(2*orank);
+	  double A;
+	  unroll_entry5(etr, oidx, A);
+
+	  // Gather the tensor values
+	  double dA=gather(tensors,oidx,T1,T2,T3,T4,T5,T6,T7,T8);
+
+	  // Do the calculation
+	  A += sign*dA;
+	  T5.set(idet,A);
+	}
+	break;
+
+      case(6):
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+	for(size_t idet=0;idet<Ndet;idet++) {
+	  Tensor6_entry_t etr(T6.get(idet));
+	  // Orbital indices
+	  std::vector<orbind_t> oidx(2*orank);
+	  double A;
+	  unroll_entry6(etr, oidx, A);
+
+	  // Gather the tensor values
+	  double dA=gather(tensors,oidx,T1,T2,T3,T4,T5,T6,T7,T8);
+
+	  // Do the calculation
+	  A += sign*dA;
+	  T6.set(idet,A);
+	}
+	break;
+
+      case(7):
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+	for(size_t idet=0;idet<Ndet;idet++) {
+	  Tensor7_entry_t etr(T7.get(idet));
+	  // Orbital indices
+	  std::vector<orbind_t> oidx(2*orank);
+	  double A;
+	  unroll_entry7(etr, oidx, A);
+
+	  // Gather the tensor values
+	  double dA=gather(tensors,oidx,T1,T2,T3,T4,T5,T6,T7,T8);
+
+	  // Do the calculation
+	  A += sign*dA;
+	  T7.set(idet,A);
+	}
+	break;
+
+
+      case(8):
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+	for(size_t idet=0;idet<Ndet;idet++) {
+	  Tensor8_entry_t etr(T8.get(idet));
+	  // Orbital indices
+	  std::vector<orbind_t> oidx(2*orank);
+	  double A;
+	  unroll_entry8(etr, oidx, A);
+
+	  // Gather the tensor values
+	  double dA=gather(tensors,oidx,T1,T2,T3,T4,T5,T6,T7,T8);
+
+	  // Do the calculation
+	  A += sign*dA;
+	  T8.set(idet,A);
+	}
+	break;
+
+      default:
+	throw std::logic_error("Not implemented!\n");
+      }
+    }
+
+    auto tstop(std::chrono::system_clock::now());
+
+    std::chrono::duration<double> elapsed = tstop-tstart;
+    printf("done (%12.6f s/det)\n",elapsed.count()/Ndet);
+    fflush(stdout);
+  }
+}
