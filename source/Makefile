@@ -23,15 +23,19 @@ OBJS=$(SOURCES:.cc=.o)
 #	./generate.x
 
 main.o: main.cc evaluate.cc.in gather.hh
-main_bit.x: $(OBJS) main.o read_bitstring.o
+main_bit.x: $(OBJS) main.o read_bitstring.o recipes
 	$(CXX) $(CXXFLAGS) $(OBJS) main.o read_bitstring.o -o main_bit.x
-main_ubit.x: $(OBJS) main.o read_ubitstring.o
+main_ubit.x: $(OBJS) main.o read_ubitstring.o recipes
 	$(CXX) $(CXXFLAGS) $(OBJS) main.o read_ubitstring.o -o main_ubit.x
-main_int.x: $(OBJS) main.o read_integerlist.o
+main_int.x: $(OBJS) main.o read_integerlist.o recipes
 	$(CXX) $(CXXFLAGS) $(OBJS) main.o read_integerlist.o $(GMPLIBS) -o main_int.x
 
 generate.x: generate.o wick.o
 	$(CXX) $(CXXFLAGS) generate.o wick.o -o generate.x
+
+.INTERMEDIATE: recipes
+recipes:
+	./uncompress.sh
 
 convert_bit_int.x: convert.o read_bitstring.o write_integerlist.o
 	$(CXX) $(CXXFLAGS) $(OBJS) convert.o read_bitstring.o write_integerlist.o $(GMPLIBS) -o convert_bit_int.x
