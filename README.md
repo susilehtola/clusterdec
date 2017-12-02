@@ -15,11 +15,11 @@ If you use this program, please cite the following reference:
 
 S. Lehtola, N. M. Tubman, M. Head-Gordon, and K. B. Whaley, "Cluster
 decomposition of full configuration interaction wave functions: a tool
-for chemical interpretation of systems with strong correlation", to be
-submitted.
+for chemical interpretation of systems with strong correlation",
+J. Chem. Phys. 147, 154105 (2017). arXiv:1707.04376.
 
 For further information on the program, read the above reference.
 
 To compile the code, run make.
 
-2017-07-13 Susi Lehtola
+2017-12-03 Susi Lehtola
