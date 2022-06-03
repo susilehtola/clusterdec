@@ -1,0 +1,3 @@
+source/*.x
+source/*.o
+source/recipes*.dat

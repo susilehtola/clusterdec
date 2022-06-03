@@ -10,8 +10,8 @@ CXX=g++
 CXXFLAGS=-O2 -std=c++11 -g -Wall -fopenmp $(INCLUDE)
 GMPLIBS=-lgmpxx -lgmp
 
-all: main_bit.x main_ubit.x generate.x convert_bit_ubit.x convert_ubit_bit.x
-all_gmp: $(all) main_int.x convert_bit_int.x convert_ubit_int.x convert_int_bit.x convert_int_ubit.x
+all: clusterdec_bit.x clusterdec_ubit.x generate.x convert_bit_ubit.x convert_ubit_bit.x
+all_gmp: $(all) clusterdec_int.x convert_bit_int.x convert_ubit_int.x convert_int_bit.x convert_int_ubit.x
 
 tensor.hh tensor.cc: gentensor.py
 	python gentensor.py
@@ -23,12 +23,12 @@ OBJS=$(SOURCES:.cc=.o)
 #	./generate.x
 
 main.o: main.cc evaluate.cc.in gather.hh
-main_bit.x: $(OBJS) main.o read_bitstring.o recipes
-	$(CXX) $(CXXFLAGS) $(OBJS) main.o read_bitstring.o -o main_bit.x
-main_ubit.x: $(OBJS) main.o read_ubitstring.o recipes
-	$(CXX) $(CXXFLAGS) $(OBJS) main.o read_ubitstring.o -o main_ubit.x
-main_int.x: $(OBJS) main.o read_integerlist.o recipes
-	$(CXX) $(CXXFLAGS) $(OBJS) main.o read_integerlist.o $(GMPLIBS) -o main_int.x
+clusterdec_bit.x: $(OBJS) main.o read_bitstring.o recipes
+	$(CXX) $(CXXFLAGS) $(OBJS) main.o read_bitstring.o -o clusterdec_bit.x
+clusterdec_ubit.x: $(OBJS) main.o read_ubitstring.o recipes
+	$(CXX) $(CXXFLAGS) $(OBJS) main.o read_ubitstring.o -o clusterdec_ubit.x
+clusterdec_int.x: $(OBJS) main.o read_integerlist.o recipes
+	$(CXX) $(CXXFLAGS) $(OBJS) main.o read_integerlist.o $(GMPLIBS) -o clusterdec_int.x
 
 generate.x: generate.o wick.o
 	$(CXX) $(CXXFLAGS) generate.o wick.o -o generate.x
